@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battle of Yavin</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- 星星背景 -->
+<div class="stars"></div>
+
+<div class="container">
+    <!-- 中间银河 -->
+    <div class="galaxy"></div>
+    <!-- 游戏标题 -->
+    <div class="game-title">
+        <h1>Battle of<br>Yavin</h1>
+    </div>
+
+    <!-- 战斗机图片 -->
+    <div class="fighters">
+        <img src="./data/left_fighter.png"
+             alt="Rebel Fighter" class="fighter left">
+        <img src="./data/right_fighter.png"
+             alt="Empire Fighter" class="fighter right">
+    </div>
+
+
+
+    <!-- 按钮区域 -->
+    <div class="buttons">
+        <button class="btn" id="signInBtn">Sign In</button>
+        <button class="btn" id="startBtn">Start</button>
+        <button class="btn" id="descBtn">Description</button>
+    </div>
+</div>
+
+<!-- 描述模态框 -->
+<div class="modal" id="descModal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Battle of Yavin</h2>
+        <p>In a galaxy far, far away, the Galactic Empire and Rebel Alliance clash in a decisive battle above the planet Yavin. As a turret operator aboard your faction's mothership, your mission is to defend against incoming enemy fighters.</p>
+
+        <h2>Game Rules</h2>
+        <p>• Control your turret with Up/Down arrow keys to adjust angle</p>
+        <p>• Press Spacebar to fire at enemy fighters</p>
+        <p>• Prevent fighters from breaching your deflector shield - each breach reduces your mothership's health</p>
+        <p>• Fighters will increase in speed over time, testing your reflexes</p>
+        <p>• Activate cheat mode with Shift+S (grants shields to your fighters)</p>
+
+        <h2>Goal</h2>
+        <p>Destroy enemy fighters and reduce the opponent's mothership health to 0 first to claim victory!</p>
+    </div>
+</div>
+
+<script>
+    // 生成随机星星背景
+    function createStars() {
+        const starsContainer = document.querySelector('.stars');
+        const starCount = 150;
+
+        for (let i = 0; i < starCount; i++) {
+            const star = document.createElement('div');
+            star.classList.add('star');
+
+            // 随机位置和大小
+            const size = Math.random() * 3 + 1;
+            star.style.width = `${size}px`;
+            star.style.height = `${size}px`;
+            star.style.left = `${Math.random() * 100}%`;
+            star.style.top = `${Math.random() * 100}%`;
+            star.style.animationDelay = `${Math.random() * 2}s`;
+
+            starsContainer.appendChild(star);
+        }
+    }
+
+    const descModal = document.getElementById('descModal');
+    const descBtn = document.getElementById('descBtn');
+    const closeBtn = document.querySelector('.close-modal');
+
+    descBtn.addEventListener('click', () => {
+        descModal.style.display = 'flex';
+    });
+
+    closeBtn.addEventListener('click', () => {
+        descModal.style.display = 'none';
+    });
+
+    window.addEventListener('click', (e) => {
+        if (e.target === descModal) {
+            descModal.style.display = 'none';
+        }
+    });
+
+    document.getElementById('signInBtn').addEventListener('click', () => {
+        alert('Sign In page will open here');
+        // 实际项目中使用：window.location.href = 'signin.html';
+    });
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        alert('Navigating to waiting lobby...');
+        // 实际项目中使用：window.location.href = 'lobby.html';
+    });
+
+    window.addEventListener('load', createStars);
+</script>
+</body>
+</html>
