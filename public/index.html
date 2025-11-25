@@ -96,13 +96,33 @@
     });
 
     document.getElementById('signInBtn').addEventListener('click', () => {
-        alert('Sign In page will open here');
-        // 实际项目中使用：window.location.href = 'signin.html';
+        window.location.href = 'login.html';
     });
 
     document.getElementById('startBtn').addEventListener('click', () => {
-        alert('Navigating to waiting lobby...');
-        // 实际项目中使用：window.location.href = 'lobby.html';
+        // 检查是否已登录
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            // 验证令牌
+            fetch('/api/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token })
+            }).then(res => res.json()).then(data => {
+                if (data.success) {
+                    window.location.href = 'lobby.html';
+                } else {
+                    localStorage.clear();
+                    window.location.href = 'login.html';
+                }
+            }).catch(() => {
+                window.location.href = 'login.html';
+            });
+        } else {
+            window.location.href = 'login.html';
+        }
     });
 
     window.addEventListener('load', createStars);

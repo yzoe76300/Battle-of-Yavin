@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matchmaking Lobby</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .lobby-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 800px;
+            margin: 3rem auto;
+            padding: 3rem;
+            background: rgba(26, 20, 89, 0.9);
+            border: 2px solid #4ECDC4;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(78, 205, 196, 0.5);
+            text-align: center;
+        }
+
+        .user-info {
+            color: #4ECDC4;
+            margin-bottom: 2rem;
+            font-size: 1.2rem;
+        }
+
+        .user-info span {
+            color: white;
+            font-weight: bold;
+        }
+
+        .matchmaking-section {
+            margin: 2rem 0;
+        }
+
+        .matchmaking-status {
+            color: #4ECDC4;
+            font-size: 1.3rem;
+            margin: 2rem 0;
+            min-height: 2rem;
+        }
+
+        .matchmaking-status.waiting {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .btn-match {
+            padding: 1.2rem 3rem;
+            background-color: #4ECDC4;
+            color: #2A2F75;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+            margin: 1rem;
+        }
+
+        .btn-match:hover:not(:disabled) {
+            background-color: #3db8b0;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(78, 205, 196, 0.5);
+        }
+
+        .btn-match:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-cancel {
+            padding: 0.8rem 2rem;
+            background-color: transparent;
+            color: #ff6b6b;
+            border: 2px solid #ff6b6b;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 1rem;
+        }
+
+        .btn-cancel:hover {
+            background-color: rgba(255, 107, 107, 0.1);
+        }
+
+        .btn-logout {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            padding: 0.6rem 1.5rem;
+            background-color: transparent;
+            color: #4ECDC4;
+            border: 2px solid #4ECDC4;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-logout:hover {
+            background-color: rgba(78, 205, 196, 0.1);
+        }
+
+        .opponent-info {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: rgba(78, 205, 196, 0.1);
+            border: 2px solid #4ECDC4;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .opponent-info.show {
+            display: block;
+        }
+
+        .opponent-info h3 {
+            color: #4ECDC4;
+            margin-bottom: 1rem;
+        }
+
+        .opponent-info p {
+            color: white;
+            font-size: 1.1rem;
+        }
+
+        .queue-info {
+            color: #4ECDC4;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- 星星背景 -->
+    <div class="stars"></div>
+
+    <button class="btn-logout" onclick="logout()">LogOut</button>
+
+    <div class="lobby-container">
+        <div class="user-info">
+            Welcome, <span id="usernameDisplay"></span>
+        </div>
+
+        <div class="matchmaking-section">
+            <h2 style="color: #4ECDC4; margin-bottom: 2rem;">Matchmaking Lobby</h2>
+            
+            <div class="matchmaking-status" id="matchmakingStatus"></div>
+
+            <div class="opponent-info" id="opponentInfo">
+                <h3>Match successful !</h3>
+                <p>rival: <span id="opponentName"></span></p>
+                <p>Room ID: <span id="roomId"></span></p>
+                <p style="margin-top: 1rem; color: #4ECDC4;">Entering the game ...</p>
+            </div>
+
+            <button class="btn-match" id="matchBtn" onclick="startMatchmaking()">start Matchmaking</button>
+            <button class="btn-cancel" id="cancelBtn" onclick="cancelMatchmaking()" style="display: none;">cancel Matchmaking</button>
+
+            <div class="queue-info" id="queueInfo"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket;
+        let isMatchmaking = false;
+        // TODO : 超时提示或者重连
+        let matchmakingTimeout;
+
+        // 生成随机星星背景
+        function createStars() {
+            const starsContainer = document.querySelector('.stars');
+            const starCount = 150;
+
+            for (let i = 0; i < starCount; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star');
+
+                const size = Math.random() * 3 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.top = `${Math.random() * 100}%`;
+                star.style.animationDelay = `${Math.random() * 2}s`;
+
+                starsContainer.appendChild(star);
+            }
+        }
+
+        // 初始化
+        window.addEventListener('load', () => {
+            createStars();
+
+            // 检查登录状态
+            const token = localStorage.getItem('authToken');
+            const userId = localStorage.getItem('userId');
+            const username = localStorage.getItem('username');
+
+            if (!token || !userId || !username) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // 验证令牌
+            fetch('/api/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ token })
+            }).then(res => res.json()).then(data => {
+                if (!data.success) {
+                    localStorage.clear();
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                // 显示用户名
+                document.getElementById('usernameDisplay').textContent = username;
+
+                // 连接 Socket.io
+                socket = io();
+                
+                // Socket 事件监听
+                socket.on('matchmakingStatus', (data) => {
+                    updateMatchmakingStatus(data);
+                });
+
+                socket.on('matchFound', (data) => {
+                    handleMatchFound(data);
+                });
+
+                socket.on('connect', () => {
+                    console.log('Connected to Server');
+                });
+
+                socket.on('disconnect', () => {
+                    console.log('Lose Connection');
+                    updateMatchmakingStatus({
+                        status: 'error',
+                        message: 'Lose Connection, try to reload the page'
+                    });
+                });
+            }).catch(error => {
+                console.error('Validation failed:', error);
+                localStorage.clear();
+                window.location.href = 'login.html';
+            });
+        });
+
+        // 开始匹配
+        function startMatchmaking() {
+            if (isMatchmaking) return;
+            // 调用localStorage 读取
+            const userId = localStorage.getItem('userId');
+            const username = localStorage.getItem('username');
+            // 如果未登录则跳转至登录界面
+            if (!userId || !username) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            isMatchmaking = true;
+            document.getElementById('matchBtn').disabled = true;
+            document.getElementById('matchBtn').style.display = 'none';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+            // 发送匹配请求
+            socket.emit('joinMatchmaking', {
+                userId,
+                username
+            });
+            // 更行匹配状态
+            updateMatchmakingStatus({
+                status: 'waiting',
+                message: 'Looking for rival ...'
+            });
+        }
+
+        // 取消匹配
+        function cancelMatchmaking() {
+            if (!isMatchmaking) return;
+
+            const userId = localStorage.getItem('userId');
+            socket.emit('cancelMatchmaking', { userId });
+
+            isMatchmaking = false;
+            document.getElementById('matchBtn').disabled = false;
+            document.getElementById('matchBtn').style.display = 'inline-block';
+            document.getElementById('cancelBtn').style.display = 'none';
+            document.getElementById('opponentInfo').classList.remove('show');
+
+            updateMatchmakingStatus({
+                status: 'idle',
+                message: ''
+            });
+        }
+
+        // 更新匹配状态
+        function updateMatchmakingStatus(data) {
+            const statusDiv = document.getElementById('matchmakingStatus');
+            const queueInfo = document.getElementById('queueInfo');
+
+            statusDiv.className = 'matchmaking-status';
+            queueInfo.textContent = '';
+
+            switch (data.status) {
+                case 'waiting':
+                    statusDiv.textContent = data.message || 'Looking for rival ...';
+                    statusDiv.classList.add('waiting');
+                    if (data.queueLength !== undefined) {
+                        queueInfo.textContent = `Queue: ${data.queueLength}`;
+                    }
+                    break;
+                case 'cancelled':
+                    statusDiv.textContent = data.message || 'Canceled';
+                    statusDiv.classList.remove('waiting');
+                    isMatchmaking = false;
+                    document.getElementById('matchBtn').disabled = false;
+                    document.getElementById('matchBtn').style.display = 'inline-block';
+                    document.getElementById('cancelBtn').style.display = 'none';
+                    break;
+                case 'already_in_queue':
+                    statusDiv.textContent = data.message || 'You are already in queue!';
+                    statusDiv.classList.add('waiting');
+                    break;
+                case 'error':
+                    statusDiv.textContent = data.message || 'Error happened!';
+                    statusDiv.classList.remove('waiting');
+                    isMatchmaking = false;
+                    document.getElementById('matchBtn').disabled = false;
+                    document.getElementById('matchBtn').style.display = 'inline-block';
+                    document.getElementById('cancelBtn').style.display = 'none';
+                    break;
+                default:
+                    statusDiv.textContent = '';
+            }
+        }
+
+        // 处理匹配成功
+        function handleMatchFound(data) {
+            isMatchmaking = false;
+            document.getElementById('matchBtn').disabled = true;
+            document.getElementById('cancelBtn').style.display = 'none';
+
+            document.getElementById('opponentName').textContent = data.opponent.username;
+            document.getElementById('roomId').textContent = data.roomId;
+            document.getElementById('opponentInfo').classList.add('show');
+
+            updateMatchmakingStatus({
+                status: 'matched',
+                message: 'matchmaking Success !'
+            });
+
+            // 保存房间信息
+            localStorage.setItem('roomId', data.roomId);
+            localStorage.setItem('playerRole', data.playerRole);
+            localStorage.setItem('opponentUsername', data.opponent.username);
+            localStorage.setItem('opponentUserId', data.opponent.userId);
+
+            // 3秒后跳转到游戏页面（这里可以改为实际的游戏页面）
+            setTimeout(() => {
+                // 这里可以跳转到游戏页面
+                alert(`matchmaking Success !\n Rival: ${data.opponent.username}\nRoom: ${data.roomId}\n\nGame Page developing ...`);
+                // window.location.href = 'game.html';
+            }, 3000);
+        }
+
+        // 登出
+        async function logout() {
+            const token = localStorage.getItem('authToken');
+            
+            if (token) {
+                try {
+                    await fetch('/api/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ token })
+                    });
+                } catch (error) {
+                    console.error('Logout failed:', error);
+                }
+            }
+
+            if (socket) {
+                socket.disconnect();
+            }
+
+            localStorage.clear();
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>
+
