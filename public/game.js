@@ -59,6 +59,14 @@
     lastSendTs: 0
   };
 
+  // Projectiles
+  const FIRE_COOLDOWN_MS = 180;        // fire rate limit
+  const BULLET_SPEED = 1800;           // px/sec
+  const BULLET_LIFETIME = 2.2;         // seconds
+  const BULLET_LEN = 24;               // drawing length
+  state.projectiles = [];              // {x,y,vx,vy,ts,side}
+  state.lastFireTs = 0;
+
   // Canvas setup (auto-resize to device pixel ratio)
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -86,6 +94,13 @@
       keys.add(e.key);
       e.preventDefault();
     }
+
+    // Allow holding Space (auto-fire handled in tick)
+    if (e.code === 'Space') {
+      keys.add('Space');
+      e.preventDefault();
+    }
+
     // Cheat toggle
     if ((e.key === 'S' || e.key === 's') && e.shiftKey) {
       state.my.cheat = !state.my.cheat;
@@ -93,9 +108,14 @@
       socket.emit('cheatToggle', { roomId, enabled: state.my.cheat });
     }
   });
+
   window.addEventListener('keyup', (e) => {
     if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
       keys.delete(e.key);
+      e.preventDefault();
+    }
+    if (e.code === 'Space') {
+      keys.delete('Space');
       e.preventDefault();
     }
   });
@@ -104,6 +124,13 @@
   socket.on('opponentTurret', ({ angle /*, ts*/ }) => {
     state.op.angle = angle;
   });
+
+  socket.on('opponentFire', ({ x, y, vx, vy, ts }) => {
+    const opponentSide = (role === 'player1') ? 'player2' : 'player1';
+    state.projectiles.push({ x, y, vx, vy, ts, side: opponentSide });
+    if (state.projectiles.length > 400) state.projectiles.splice(0, state.projectiles.length - 400);
+  });
+  
   socket.on('opponentCheat', ({ enabled }) => {
     state.op.cheat = !!enabled;
   });
@@ -170,20 +197,163 @@
     ctx.rotate(angle);
 
     // base
-    ctx.fillStyle = side === 'left' ? '#a8dadc' : '#ffd166';
+    ctx.fillStyle = '#343434';
     ctx.fillRect(-18, -14, 36, 28);
 
     // barrel
-    ctx.fillStyle = '#e0fbfc';
-    ctx.fillRect(0, -6, 140, 12);
+    ctx.fillStyle = '#696969';
+    ctx.fillRect(0, -6, 100, 12);
 
     // glowing tip
     ctx.beginPath();
-    ctx.fillStyle = 'rgba(78,205,196,0.8)';
-    ctx.arc(140, 0, 6, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.arc(100, 0, 6, 0, Math.PI*2);
     ctx.fill();
 
     ctx.restore();
+  }
+
+  // Compute turret base position and shot direction for my cannon
+  function getMyTurretBaseAndDir() {
+    // Recompute same anchors used by draw()
+    const midY   = state.height * 0.5;
+    const leftX  = state.width  * 0.17;
+    const rightX = state.width  * 0.83;
+
+    // Turret bases (match drawTurret calls)
+    const baseLeft  = { x: leftX  + 300, y: midY + 90 };
+    const baseRight = { x: rightX - 300, y: midY + 90 };
+
+    // Direction reference: player1 faces +X, player2 faces -X
+    const dir = (role === 'player1') ? 1 : -1;
+    const a = state.my.angle; // already measured from each side's forward
+    const dx = Math.cos(a) * dir;
+    const dy = Math.sin(a);
+
+    const base = (role === 'player1') ? baseLeft : baseRight;
+
+    // Offset to the barrel tip (match barrel lengths in drawTurret: 100)
+    const tip = { x: base.x + dx * 100, y: base.y + dy * 100 };
+
+    return { base, dir: { dx, dy }, tip };
+  }
+
+  // Shield geometry must match drawMothership
+  const SHIP_W = 1000, SHIP_H = 500;
+  const SHIELD_RX = SHIP_W * 0.5;
+  const SHIELD_RY = SHIP_H * 1.5;
+  const SHIELD_CX_OFFSET = SHIP_W * 0.05;
+
+  // Anchors used across draw and collision
+  function getSceneAnchors() {
+    const midY   = state.height * 0.5;
+    const leftX  = state.width  * 0.17;
+    const rightX = state.width  * 0.83;
+    return { midY, leftX, rightX };
+  }
+
+  // Return shield ellipse for a given side ('left' ship for player1, 'right' ship for player2)
+  function getShieldForSide(side) {
+    const { midY, leftX, rightX } = getSceneAnchors();
+    const dir = (side === 'left') ? 1 : -1; // +X for left ship (player1), -X for right ship (player2)
+    const shipX = (side === 'left') ? leftX : rightX;
+    const cx = shipX + dir * SHIELD_CX_OFFSET;
+    const cy = midY;
+    return { cx, cy, rx: SHIELD_RX, ry: SHIELD_RY, dir };
+  }
+
+  // Check if a point (bullet) is inside the "front half" of the shield ellipse
+  function hitsShield(px, py, shield) {
+    const { cx, cy, rx, ry, dir } = shield;
+    // Inside ellipse?
+    const nx = (px - cx) / rx;
+    const ny = (py - cy) / ry;
+    const inside = (nx*nx + ny*ny) <= 1;
+    if (!inside) return false;
+    // Front-half check: for left ship (dir=+1) front is x > cx; for right ship (dir=-1) front is x < cx
+    const front = (dir === 1) ? (px - cx) > 0 : (px - cx) < 0;
+    return front;
+  }
+
+  function fireBullet() {
+    const { tip, dir: v } = getMyTurretBaseAndDir();
+    const b = {
+      x: tip.x,
+      y: tip.y,
+      vx: v.dx * BULLET_SPEED,
+      vy: v.dy * BULLET_SPEED,
+      ts: performance.now() / 1000,
+      side: role // 'player1' or 'player2'
+    };
+
+    // local spawn
+    state.projectiles.push(b);
+    if (state.projectiles.length > 400) state.projectiles.splice(0, state.projectiles.length - 400);
+
+    // tell the room
+    socket.emit('fire', {
+      roomId,
+      x: b.x, y: b.y, vx: b.vx, vy: b.vy, ts: b.ts
+    });
+  }
+
+  function stepProjectiles(dt) {
+    const now = performance.now() / 1000;
+    const w = state.width, h = state.height;
+
+    // Precompute both shields
+    const leftShield  = getShieldForSide('left');
+    const rightShield = getShieldForSide('right');
+
+    state.projectiles = state.projectiles.filter(p => {
+      // Integrate
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+
+      // Lifetime / bounds cull
+      const alive = (now - p.ts) < BULLET_LIFETIME;
+      const onscreen = p.x > -200 && p.x < w + 200 && p.y > -200 && p.y < h + 200;
+      if (!alive || !onscreen) return false;
+
+      // Collision: bullet only interacts with the opponent shield
+      const targetShield = (p.side === 'player1') ? rightShield : leftShield;
+
+      // Simple point-in-ellipse test at bullet tip
+      const hit = hitsShield(p.x, p.y, targetShield);
+      
+      if (hit) return false; // remove bullet on hit
+
+      return true; // keep bullet
+    });
+  }
+
+  function drawProjectiles(ctx) {
+    for (const p of state.projectiles) {
+      // bolt color per side
+      const c = (p.side === 'player1') ? 'rgba(78,205,196,0.95)' : 'rgba(255,190,111,0.95)';
+      const ang = Math.atan2(p.vy, p.vx);
+
+      ctx.save(); // keep the DPI transform and all state
+
+      // gradient along bolt direction
+      const g = ctx.createLinearGradient(p.x, p.y, p.x - p.vx * 0.01, p.y - p.vy * 0.01);
+      g.addColorStop(0, c);
+
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang);
+
+      // core bolt
+      ctx.fillStyle = g;
+      ctx.fillRect(0, -2, BULLET_LEN, 4);
+
+      // glow
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 12;
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(0, -1.5, BULLET_LEN, 3);
+
+      ctx.restore(); // restores transform, alpha, shadow, etc.
+    }
   }
 
   // Game loop
@@ -209,6 +379,16 @@
       socket.emit('turretUpdate', { roomId, angle: state.my.angle, ts });
       state.lastSendTs = ts;
     }
+
+    // Auto-fire while Space is held (respects cooldown)
+    const nowMs = performance.now();
+    if (keys.has('Space') && (nowMs - state.lastFireTs >= FIRE_COOLDOWN_MS))
+    {
+      fireBullet();
+      state.lastFireTs = nowMs;
+    }
+
+    stepProjectiles(dt);
 
     draw();
     requestAnimationFrame(tick);
@@ -237,6 +417,9 @@
     drawMothership(leftX,  midY, 'left',  role === 'player1' ? myCheat : opCheat);
     drawMothership(rightX, midY, 'right', role === 'player2' ? myCheat : opCheat);
 
+    // Projectiles
+    drawProjectiles(ctx);
+
     // Angles for drawing:
     // Reference: for the left ship, 0 rad points +X; for the right ship, 0 rad points -X.
     const leftAngle  = (role === 'player1') ? state.my.angle : state.op.angle;
@@ -247,8 +430,8 @@
     const rightDrawAngle = Math.PI - rightAngle;     // flip for -X baseline
 
     // Turrets
-    drawTurret(leftX + 110,  midY - 10, leftDrawAngle,  'left');
-    drawTurret(rightX - 110, midY - 10, rightDrawAngle, 'right');
+    drawTurret(leftX + 300,  midY + 90, leftDrawAngle,  'left');
+    drawTurret(rightX - 300, midY + 90, rightDrawAngle, 'right');
   }
 
   requestAnimationFrame(tick);

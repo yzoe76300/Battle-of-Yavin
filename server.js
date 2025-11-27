@@ -304,6 +304,14 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('opponentTurret', { angle, ts });
   });
 
+  // Relay bullet fire to opponent
+  socket.on('fire', ({ roomId, x, y, vx, vy, ts }) => {
+    if (!roomId) return;
+    // Optionally, trust socket.data.game.roomId if you prefer:
+    // const roomId = socket.data?.game?.roomId; if (!roomId) return;
+    socket.to(roomId).emit('opponentFire', { x, y, vx, vy, ts });
+  });
+
   // Cheat toggle
   socket.on('cheatToggle', ({ roomId, enabled }) => {
     if (!roomId) return;
