@@ -84,10 +84,53 @@
       window.addEventListener('mousedown', resumeFromGesture, true);
       window.addEventListener('touchstart', resumeFromGesture, true);
     });
+
+    try { ensureAudioCtx(); } catch {}
   }
 
   function resumeFromGesture() {
     tryStartMusic();
+    
+    try { ensureAudioCtx(); } catch {}
+  }
+// === Cannon SFX with Web Audio (decode once, play many) ===
+  let audioCtx = null;
+  let sfxGain = null;
+  let cannonBuffer = null;
+
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC({ latencyHint: 'interactive' });
+      sfxGain = audioCtx.createGain();
+      sfxGain.gain.value = 0.8; // volume similar to before
+      sfxGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  async function loadCannonBuffer() {
+    if (cannonBuffer) return cannonBuffer;
+    ensureAudioCtx();
+    const resp = await fetch('data/cannon_sound.m4a');
+    const arr = await resp.arrayBuffer();
+    cannonBuffer = await audioCtx.decodeAudioData(arr);
+    return cannonBuffer;
+  }
+
+  async function playCannon() {
+    try {
+      await loadCannonBuffer();
+      ensureAudioCtx();
+      const src = audioCtx.createBufferSource();
+      src.buffer = cannonBuffer;
+      src.connect(sfxGain);
+      src.start(); // fire immediately; super low overhead
+    } catch (_) {
+      /* ignore */
+    }
   }
 
   // Projectiles
@@ -400,6 +443,8 @@
     // local spawn
     state.projectiles.push(b);
     if (state.projectiles.length > 400) state.projectiles.splice(0, state.projectiles.length - 400);
+
+    playCannon();
 
     // tell the room
     socket.emit('fire', {
