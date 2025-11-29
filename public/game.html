@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Battle of Yavin — Game</title>
+  <style>
+    /* background */
+    :root {
+      --teal: #4ECDC4;
+      --ink: #1A1459;
+      --navy: #0B0E3F;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--navy) 0%, var(--ink) 50%, var(--navy) 100%);
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Arial Rounded MT Bold", sans-serif;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    header, footer {
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: rgba(26, 20, 89, 0.6);
+      border-bottom: 1px solid rgba(78, 205, 196, 0.25);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: 0.08em;
+      color: var(--teal);
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      font-size: 0.9rem;
+    }
+    .badge {
+      border: 1px solid var(--teal);
+      color: var(--teal);
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+    }
+    .badge.red { border-color: #ff6b6b; color: #ff6b6b; }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    button {
+      background: transparent;
+      color: var(--teal);
+      border: 1px solid var(--teal);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(78,205,196,0.1); }
+    main {
+      display: grid;
+      place-items: center;
+      padding: 0.5rem;
+    }
+    canvas {
+      width: 95%;
+      aspect-ratio: 2 / 1;
+      border: 1px solid rgba(78,205,196,0.25);
+      background:
+        radial-gradient(circle at 30% 40%, rgba(78,205,196,0.15), transparent 60%),
+        radial-gradient(circle at 70% 60%, rgba(85,98,112,0.15), transparent 65%),
+        transparent;
+      box-shadow: 0 0 20px rgba(78,205,196,0.25), inset 0 0 40px rgba(10,14,63,0.35);
+      border-radius: 10px;
+    }
+    footer {
+      border-top: 1px solid rgba(78, 205, 196, 0.25);
+      border-bottom: none;
+      justify-content: center;
+      gap: 1rem;
+      font-size: 0.9rem;
+    }
+    .small {
+      opacity: 0.8;
+      font-size: 0.85rem;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+  <script defer src="./game.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Battle of Yavin — Game</h1>
+    <div class="meta">
+      <span class="badge" id="roomBadge">Room: —</span>
+      <span class="badge" id="roleBadge">Role: —</span>
+      <span class="badge" id="youBadge">You: —</span>
+      <span class="badge" id="opBadge">Opponent: waiting…</span>
+      <span class="badge red" id="cheatBadge" style="display:none;">Cheat ON</span>
+    </div>
+    <div class="controls">
+      <button id="returnBtn" title="Return to Lobby">Return</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="game"></canvas>
+  </main>
+
+  <footer class="small">
+    Controls: Up / Down — rotate turret • Shift+S — toggle cheat (visual) • This is a basic synced prototype.
+  </footer>
+</body>
+</html>
