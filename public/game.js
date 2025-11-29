@@ -63,6 +63,31 @@
     lastSendTs: 0
   };
 
+  // === Death Star image ===
+  const imgDeathStar = new Image();
+  imgDeathStar.src = 'data/death_star.png'; // provided file
+
+  // === Pre-rendered starfield layer ===
+  const starLayer = document.createElement('canvas');
+  const sctx = starLayer.getContext('2d');
+
+  function buildStars() {
+    starLayer.width = state.width;
+    starLayer.height = state.height;
+    sctx.clearRect(0, 0, starLayer.width, starLayer.height);
+
+    // Sprinkle stars with slight brightness variation
+    const STAR_COUNT = 300;
+    for (let i = 0; i < STAR_COUNT; i++) {
+      const x = Math.random() * starLayer.width;
+      const y = Math.random() * starLayer.height;
+      const a = 0.3 + Math.random() * 0.2;
+      sctx.fillStyle = `rgba(255,255,255,${a})`;
+      // tiny square stars for simplicity
+      sctx.fillRect(x, y, 4, 4);
+    }
+  }
+
   // === Background music ===
   let musicStarted = false;
   const bgm = new Audio('data/Imperial March.m4a'); // your provided m4a
@@ -224,6 +249,8 @@
     canvas.width = state.width * ratio;
     canvas.height = state.height * ratio;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    buildStars(); // Rebuild background layer to match new size
     draw(); // redraw on resize
   }
   window.addEventListener('resize', resize, { passive: true });
@@ -773,14 +800,23 @@
   function draw() {
     ctx.clearRect(0, 0, state.width, state.height);
 
-    // lightweight star speckles
+    // Dark in-canvas backdrop (separates play field from page's blue background)
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, state.height);
+    bgGrad.addColorStop(0,   '#040509');  // almost black
+    bgGrad.addColorStop(1.0, '#0a0d18');  // dark blue
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, state.width, state.height);
+
+    // Pre-rendered starfield background
+    ctx.drawImage(starLayer, 0, 0);
+
+    // Death Star (background prop, drawn behind ships)
     ctx.save();
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * state.width;
-      const y = Math.random() * state.height;
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      ctx.fillRect(x, y, 2, 2);
-    }
+    const dsW = 500, dsH = 600;
+    const dsX = state.width * 0.5 - dsW / 2;
+    const dsY = state.height * 0.25 - dsH / 2;
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(imgDeathStar, dsX, dsY, dsW, dsH);
     ctx.restore();
 
     const midY = state.height * 0.5;
