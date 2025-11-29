@@ -151,7 +151,8 @@
       (L <= 0 ? 'player2' : 'player1');
 
     // Tell server to broadcast to both clients
-    socket.emit('gameOver', { roomId, winner });
+    const lives = { left: L, right: R };
+    socket.emit('gameOver', { roomId, winner, lives });
 
     // Optional safety fallback: if broadcast somehow lost, self-navigate after a short delay
     setTimeout(() => {
@@ -161,6 +162,8 @@
         url.searchParams.set('winner', winner);
         url.searchParams.set('role', role);
         url.searchParams.set('you', username);
+        url.searchParams.set('left', L);
+        url.searchParams.set('right', R);
         location.href = url.toString();
       }
     }, 800);
@@ -298,13 +301,17 @@
   });
 
   // === Game over broadcast -> both sides navigate ===
-  socket.on('gameOver', ({ winner }) => {
+  socket.on('gameOver', ({ winner, lives }) => {
     if (gameEnded) return;
     gameEnded = true;
 
     const url = new URL('gameover.html', location.href);
     url.searchParams.set('roomId', roomId);
     url.searchParams.set('winner', (winner || 'tie'));
+    if (lives && typeof lives.left === 'number' && typeof lives.right === 'number') {
+      url.searchParams.set('left', lives.left);
+      url.searchParams.set('right', lives.right);
+    }
     url.searchParams.set('role', role);
     url.searchParams.set('you', username);
     location.href = url.toString();

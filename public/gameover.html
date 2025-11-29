@@ -74,6 +74,7 @@
     <h1>Battle of Yavin</h1>
     <p class="sub">Game Over</p>
     <div id="result" class="result">—</div>
+    <p id="lives" class="sub">—</p>
     <div class="badges">
       <div id="room" class="badge"></div>
       <div id="role" class="badge"></div>
@@ -91,6 +92,9 @@
     const roomId = params.get('roomId') || '—';
     const role   = params.get('role') || '—';
     const you    = params.get('you')  || '—';
+    const left  = parseInt(params.get('left')  || '', 10);
+    const right = parseInt(params.get('right') || '', 10);
+    const hasLives = Number.isFinite(left) && Number.isFinite(right);
 
     // Set badges
     document.getElementById('room').textContent = 'Room: ' + roomId;
@@ -104,6 +108,20 @@
     else if (winner === 'player2') text = 'Player2 won!';
     resultEl.textContent = text;
     if (winner === 'tie' || winner === '') resultEl.classList.add('tie');
+
+    // Show life left
+    const livesEl = document.getElementById('lives');
+    if (hasLives) {
+      let winnerLife = 0;
+      if (winner === 'player1') winnerLife = left;
+      else if (winner === 'player2') winnerLife = right;
+      else winnerLife = Math.max(0, Math.max(left, right)); // tie: show max (likely 0)
+      livesEl.textContent = (winner === 'tie' || winner === '')
+        ? `Final Lives — Player1: ${left} • Player2: ${right}`
+        : `Life left: ${winnerLife} (Player1: ${left} • Player2: ${right})`;
+    } else {
+      livesEl.textContent = '';
+    }
 
     // Buttons
     document.getElementById('btnLobby').addEventListener('click', () => {

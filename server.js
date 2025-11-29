@@ -331,9 +331,9 @@ io.on('connection', (socket) => {
   });
 
   // Broadcast game over to both clients in the room
-  socket.on('gameOver', ({ roomId, winner }) => {
+  socket.on('gameOver', ({ roomId, winner, lives }) => {
     if (!roomId) return;
-    io.to(roomId).emit('gameOver', { winner });
+    io.to(roomId).emit('gameOver', { winner, lives }); // lives = { left, right }
   });
 
   // Cheat toggle
