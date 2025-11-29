@@ -67,6 +67,32 @@
   state.projectiles = [];              // {x,y,vx,vy,ts,side}
   state.lastFireTs = 0;
 
+  // Fighters and explosions ===
+  state.fighters = [];   // {id, side:'left'|'right', x,y, vx, vy, r, alive:true}
+  state.explosions = []; // {x,y, t:0..life, life}
+  const FIGHTER_SPEED = 520;           // px/sec base speed
+  const FIGHTER_RADIUS = 36;           // for simple circle hitbox
+  const SPAWN_INTERVAL_MS = 3000;      // how often to spawn a pair
+  state.lastSpawnMs = 0;
+
+  // === Difficulty scaling ===
+
+  // fighter speed scales with elapsed time
+  function speedMultiplier() {
+    const t = (performance.now() - GAME_START_MS) / 1000; // seconds
+    // +1% per second capped at +200%
+    return Math.min(3, 1 + 0.01 * t);
+  }
+
+  // === Lives  ===
+  state.lives = { left: 20, right: 20 };  // both sides start at 15
+  const GAME_START_MS = performance.now();
+
+
+// host: only the current player1 runs host-only logic
+  function isHost() {
+    return role === 'player1';
+  }
   // Canvas setup (auto-resize to device pixel ratio)
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -76,6 +102,12 @@
   const imgDestroyerRight = new Image();
   imgDestroyerLeft.src = 'data/destroyer_left.png';
   imgDestroyerRight.src = 'data/destroyer_right.png';
+
+  // === Preload fighter images ===
+  const imgFighterLeft  = new Image();  // spawns at left, flies right
+  const imgFighterRight = new Image();  // spawns at right, flies left
+  imgFighterLeft.src  = 'data/rebel_fighter.png';
+  imgFighterRight.src = 'data/empire_fighter.png';
 
   function resize() {
     const ratio = window.devicePixelRatio || 1;
@@ -129,6 +161,31 @@
     const opponentSide = (role === 'player1') ? 'player2' : 'player1';
     state.projectiles.push({ x, y, vx, vy, ts, side: opponentSide });
     if (state.projectiles.length > 400) state.projectiles.splice(0, state.projectiles.length - 400);
+  });
+
+  // Opponent fighters spawn (relayed by server)
+  socket.on('fighterSpawn', ({ fighters }) => {
+    // Push exactly as received so IDs match across clients
+    for (const f of fighters) state.fighters.push({ ...f, alive: true, r: FIGHTER_RADIUS });
+  });
+
+  // A fighter was destroyed (relayed)
+  socket.on('fighterDown', ({ id }) => {
+    const f = state.fighters.find(x => x.id === id && x.alive);
+    if (f) {
+      f.alive = false;
+      // explosion
+      state.explosions.push({ x: f.x, y: f.y, t: 0, life: 0.45 });
+    }
+  });
+
+  // === Mirror opponent-reported breach ===
+  socket.on('breach', ({ side }) => {
+    if (!side) return;
+    state.lives[side] = Math.max(0, state.lives[side] - 1);
+    // Optional: create a small flash at the corresponding ship’s shield center
+    const { cx, cy } = getShieldForSide(side);
+    state.explosions.push({ x: cx, y: cy, t: 0, life: 0.35 });
   });
   
   socket.on('opponentCheat', ({ enabled }) => {
@@ -188,6 +245,29 @@
 
     // cleanup
     ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // === Draw lives ===
+  function drawLives(ctx) {
+    ctx.save();
+    ctx.font = 'bold 64px Arial, sans-serif';
+    ctx.textBaseline = 'top';
+
+    // Left side (player1 mothership)
+    ctx.fillStyle = 'rgba(78,205,196,0.95)';
+    ctx.shadowColor = 'rgba(78,205,196,0.6)';
+    ctx.shadowBlur = 10;
+    ctx.fillText(`Life: ${state.lives.left}`, 60, 40);
+
+    // Right side (player2 mothership)
+    const text = `Life: ${state.lives.right}`;
+    const metrics = ctx.measureText(text);
+    ctx.fillStyle = 'rgba(255,190,111,0.95)';
+    ctx.shadowColor = 'rgba(255,190,111,0.6)';
+    ctx.shadowBlur = 10;
+    ctx.fillText(text, state.width - metrics.width - 60, 40);
+
     ctx.restore();
   }
 
@@ -297,33 +377,166 @@
     });
   }
 
+  // === Host-only breach check ===
+  function checkShieldBreachesAndSync() {
+    if (!isHost()) return;
+
+    const leftShield  = getShieldForSide('left');
+    const rightShield = getShieldForSide('right');
+
+    for (const f of state.fighters) {
+      if (!f.alive) continue;
+
+      // Enemy of left mothership are right-side fighters; enemy of right mothership are left-side fighters
+      const targetShield = (f.side === 'right') ? leftShield : rightShield;
+      const breachedSide = (f.side === 'right') ? 'left' : 'right';
+
+      // When a fighter touches the shield's front half, count exactly once
+      if (hitsShield(f.x, f.y, targetShield) && !f.breached) {
+        f.breached = true; // prevent multiple life deductions for the same fighter
+
+        // Reduce appropriate life locally (fighter keeps flying; do NOT set f.alive = false)
+        state.lives[breachedSide] = Math.max(0, state.lives[breachedSide] - 1);
+
+        // Explosion on the mothership (use shield center as impact point)
+        const { cx, cy } = getShieldForSide(breachedSide);
+        state.explosions.push({ x: cx, y: cy, t: 0, life: 0.45 });
+
+        // Sync to opponent
+        socket.emit('breach', { roomId, side: breachedSide });
+      }
+    }
+  }
+
+  // === Update fighters ===
+  function stepFighters(dt) {
+    const w = state.width, h = state.height;
+
+    for (const f of state.fighters)
+    {
+      if (!f.alive) continue;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+    }
+
+    // cull off-screen (with margin)
+    const M = 120;
+    state.fighters = state.fighters.filter(f => {
+      if (!f.alive) return true; // keep for explosion timing until we explicitly remove after effect
+      return f.x > -M && f.x < w + M && f.y > -M && f.y < h + M;
+    });
+  }
+
+  function drawFighters(ctx) {
+    ctx.save();
+    for (const f of state.fighters) {
+      if (!f.alive) continue;
+      // pick sprite by spawn side (also implies heading)
+      const img = (f.side === 'left') ? imgFighterLeft : imgFighterRight;
+      const drawW = 120, drawH = 80;
+      const halfW = drawW/2, halfH = drawH/2;
+
+      // faint shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(f.x + 6, f.y + halfH - 8, halfW*0.9, 10, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // sprite
+      ctx.drawImage(img, f.x - halfW, f.y - halfH, drawW, drawH);
+    }
+    ctx.restore();
+  }
+
+  // === Explosions ===
+  function stepExplosions(dt) {
+    for (const e of state.explosions) e.t += dt;
+    state.explosions = state.explosions.filter(e => e.t < e.life);
+  }
+
+  function drawExplosions(ctx) {
+    ctx.save();
+    for (const e of state.explosions) {
+      const k = e.t / e.life;                 // 0..1
+      const r = 12 + 50 * k;                  // grows
+      const alpha = 1 - k;                    // fades
+      // outer glow
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,200,120,${0.5*alpha})`;
+      ctx.arc(e.x, e.y, r, 0, Math.PI*2);
+      ctx.fill();
+      // core
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,240,180,${0.9*alpha})`;
+      ctx.arc(e.x, e.y, r*0.45, 0, Math.PI*2);
+      ctx.fill();
+      // sparks
+      ctx.strokeStyle = `rgba(255,220,160,${0.7*alpha})`;
+      ctx.lineWidth = 2;
+      for (let i=0;i<6;i++){
+        const a = (i/6)*Math.PI*2;
+        const len = r * (0.6 + 0.4*Math.random());
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.x + Math.cos(a)*len, e.y + Math.sin(a)*len);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   function stepProjectiles(dt) {
     const now = performance.now() / 1000;
     const w = state.width, h = state.height;
 
-    // Precompute both shields
+    // Shields
     const leftShield  = getShieldForSide('left');
     const rightShield = getShieldForSide('right');
 
     state.projectiles = state.projectiles.filter(p => {
-      // Integrate
+      // integrate
       p.x += p.vx * dt;
       p.y += p.vy * dt;
 
-      // Lifetime / bounds cull
+      // life/bounds
       const alive = (now - p.ts) < BULLET_LIFETIME;
       const onscreen = p.x > -200 && p.x < w + 200 && p.y > -200 && p.y < h + 200;
       if (!alive || !onscreen) return false;
 
-      // Collision: bullet only interacts with the opponent shield
+      // shield collision (existing behavior)
       const targetShield = (p.side === 'player1') ? rightShield : leftShield;
+      if (hitsShield(p.x, p.y, targetShield)) return false;
 
-      // Simple point-in-ellipse test at bullet tip
-      const hit = hitsShield(p.x, p.y, targetShield);
-      
-      if (hit) return false; // remove bullet on hit
+      // === Fighter collision (bullets only damage enemy fighters) ===
+      const enemySide = (p.side === 'player1') ? 'right' : 'left';
+      let hitId = null;
 
-      return true; // keep bullet
+      for (const f of state.fighters) {
+        if (!f.alive || f.side !== enemySide) continue;
+        // circle hit test
+        const dx = p.x - f.x, dy = p.y - f.y;
+        if (dx*dx + dy*dy <= (f.r * f.r)) {
+          hitId = f.id;
+          break;
+        }
+      }
+
+      if (hitId)
+      {
+        // Locally mark dead and spawn explosion
+        const f = state.fighters.find(x => x.id === hitId && x.alive);
+        if (f)
+        {
+          f.alive = false;
+          state.explosions.push({ x: f.x, y: f.y, t: 0, life: 0.45 });
+        }
+        // Only the owner of the bullet notifies the server (prevents duplicate emits)
+        const iAmOwner = ((p.side === 'player1') && role === 'player1') || ((p.side === 'player2') && role === 'player2');
+        if (iAmOwner) socket.emit('fighterDown', { roomId, id: hitId });
+        return false; // bullet consumed
+      }
+
+      return true;
     });
   }
 
@@ -388,7 +601,37 @@
       state.lastFireTs = nowMs;
     }
 
+    // === Host spawns symmetric fighters and tells the room ===
+    if (isHost()) {
+      const nowSpawn = performance.now();
+      if (nowSpawn - state.lastSpawnMs >= SPAWN_INTERVAL_MS) {
+        state.lastSpawnMs = nowSpawn;
+
+        const { midY } = getSceneAnchors();
+        // random vertical bands
+        const yL = midY - 260 + Math.random() * 520;
+        const yR = midY - 260 + Math.random() * 520;
+
+        const idL = `L_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        const idR = `R_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        
+        const m = speedMultiplier();
+        const fighters = [
+          { id: idL, side: 'left',  x: state.width * 0.02, y: yL, vx:  FIGHTER_SPEED * m, vy: 0, r: FIGHTER_RADIUS },
+          { id: idR, side: 'right', x: state.width * 0.98, y: yR, vx: -FIGHTER_SPEED * m, vy: 0, r: FIGHTER_RADIUS },
+        ];
+
+        // local add
+        fighters.forEach(f => state.fighters.push({ ...f, alive: true }));
+        // sync to opponent
+        socket.emit('spawnFighters', { roomId, fighters });
+      }
+    }
+
     stepProjectiles(dt);
+    checkShieldBreachesAndSync();
+    stepFighters(dt);
+    stepExplosions(dt);
 
     draw();
     requestAnimationFrame(tick);
@@ -416,6 +659,13 @@
     const opCheat = state.op.cheat;
     drawMothership(leftX,  midY, 'left',  role === 'player1' ? myCheat : opCheat);
     drawMothership(rightX, midY, 'right', role === 'player2' ? myCheat : opCheat);
+
+    // Lives
+    drawLives(ctx);
+
+    // === Fighters and explosions ===
+    drawFighters(ctx);
+    drawExplosions(ctx);
 
     // Projectiles
     drawProjectiles(ctx);
