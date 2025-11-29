@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Battle of Yavin — Game Over</title>
+  <style>
+    :root{
+      --bg1:#0B0E3F;--bg2:#1A1459;--mint:#4ECDC4;--slate:#556270;--ink:#0A0E3F;--light:#EAFBFF;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji";
+      background: radial-gradient(1200px 800px at 50% -10%, rgba(78,205,196,0.15), transparent 60%),
+                  linear-gradient(135deg, var(--bg1), var(--bg2) 50%, var(--bg1));
+      color: white;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+      overflow:hidden;
+    }
+    .wrap{
+      width:min(840px, 94vw);
+      background: rgba(10,14,63,0.55);
+      border:2px solid rgba(78,205,196,0.35);
+      border-radius:16px;
+      padding:28px 24px 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 0 40px rgba(78,205,196,0.08);
+      backdrop-filter: blur(6px);
+      text-align:center;
+    }
+    h1{
+      margin:6px 0 4px;
+      font-size: clamp(28px, 4.8vw, 52px);
+      line-height:1.12;
+      background: linear-gradient(90deg, var(--mint), var(--slate));
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      text-shadow: 0 0 18px rgba(78,205,196,0.35);
+    }
+    .sub{opacity:.85; margin:0 0 20px; font-size:clamp(14px,2.6vw,16px)}
+    .result{
+      margin:18px 0 22px;
+      font-size: clamp(26px, 6vw, 56px);
+      font-weight: 800;
+      letter-spacing:.4px;
+      color: var(--light);
+      text-shadow: 0 0 20px rgba(78,205,196,.35);
+    }
+    .result.tie{ color:#FFD27A; text-shadow: 0 0 20px rgba(255,210,122,.35); }
+    .badges{
+      display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin:8px 0 18px;
+    }
+    .badge{
+      padding:8px 12px; border-radius:999px; border:1px solid rgba(78,205,196,0.5);
+      color: var(--mint); background: rgba(78,205,196,0.08); font-size:14px;
+    }
+    .btns{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
+    button,a.button{
+      appearance:none; border:none; cursor:pointer; text-decoration:none;
+      padding:12px 18px; border-radius:10px; font-weight:700; letter-spacing:.4px;
+      color:#0B0E3F; background: var(--mint); box-shadow: 0 0 0 2px rgba(78,205,196,.45) inset, 0 8px 24px rgba(78,205,196,.3);
+      transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+      font-size:16px;
+    }
+    button.secondary{ background:transparent; color:var(--mint); box-shadow: 0 0 0 2px rgba(78,205,196,.45) inset; }
+    button:hover,a.button:hover{ transform: translateY(-2px); }
+    .stars {position:fixed; inset:0; pointer-events:none; z-index:-1;}
+    canvas {display:block}
+  </style>
+</head>
+<body>
+  <div class="stars"><canvas id="stars"></canvas></div>
+  <div class="wrap">
+    <h1>Battle of Yavin</h1>
+    <p class="sub">Game Over</p>
+    <div id="result" class="result">—</div>
+    <div class="badges">
+      <div id="room" class="badge"></div>
+      <div id="role" class="badge"></div>
+      <div id="you"  class="badge"></div>
+    </div>
+    <div class="btns">
+      <button id="btnLobby" class="secondary">Return to Lobby</button>
+    </div>
+  </div>
+
+  <script>
+    // Read query params
+    const params = new URLSearchParams(location.search);
+    const winner = (params.get('winner') || '').toLowerCase();
+    const roomId = params.get('roomId') || '—';
+    const role   = params.get('role') || '—';
+    const you    = params.get('you')  || '—';
+
+    // Set badges
+    document.getElementById('room').textContent = 'Room: ' + roomId;
+    document.getElementById('role').textContent = 'Role: ' + role;
+    document.getElementById('you').textContent  = 'You: '  + you;
+
+    // Winner text
+    const resultEl = document.getElementById('result');
+    let text = 'Tie';
+    if (winner === 'player1') text = 'Player1 won!';
+    else if (winner === 'player2') text = 'Player2 won!';
+    resultEl.textContent = text;
+    if (winner === 'tie' || winner === '') resultEl.classList.add('tie');
+
+    // Buttons
+    document.getElementById('btnLobby').addEventListener('click', () => {
+      location.href = 'lobby.html';
+    });
+
+    // Light starfield background
+    (function(){
+      const c = document.getElementById('stars');
+      const ctx = c.getContext('2d');
+      function resize(){
+        c.width = innerWidth; c.height = innerHeight;
+        draw();
+      }
+      addEventListener('resize', resize, {passive:true});
+      function draw(){
+        ctx.clearRect(0,0,c.width,c.height);
+        for (let i=0;i<240;i++){
+          const x = Math.random()*c.width, y = Math.random()*c.height;
+          const a = 0.08 + Math.random()*0.18;
+          ctx.fillStyle = 'rgba(255,255,255,'+a+')';
+          ctx.fillRect(x,y,2,2);
+        }
+      }
+      resize();
+    })();
+  </script>
+</body>
+</html>

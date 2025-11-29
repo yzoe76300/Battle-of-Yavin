@@ -133,6 +133,39 @@
     }
   }
 
+  // === Game over handling: Host decides, server broadcasts; no direct navigation here ===
+  let gameEnded = false;
+  function checkGameOverAndNavigate() {
+    if (gameEnded) return;
+
+    const L = state.lives.left;
+    const R = state.lives.right;
+    if (L > 0 && R > 0) return;
+
+    // Only host declares game over
+    if (!isHost()) return;
+
+    gameEnded = true;
+    const winner =
+      (L <= 0 && R <= 0) ? 'tie' :
+      (L <= 0 ? 'player2' : 'player1');
+
+    // Tell server to broadcast to both clients
+    socket.emit('gameOver', { roomId, winner });
+
+    // Optional safety fallback: if broadcast somehow lost, self-navigate after a short delay
+    setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        const url = new URL('gameover.html', location.href);
+        url.searchParams.set('roomId', roomId);
+        url.searchParams.set('winner', winner);
+        url.searchParams.set('role', role);
+        url.searchParams.set('you', username);
+        location.href = url.toString();
+      }
+    }, 800);
+  }
+
   // Projectiles
   const FIRE_COOLDOWN_MS = 180;        // fire rate limit
   const BULLET_SPEED = 1800;           // px/sec
@@ -257,9 +290,24 @@
   socket.on('breach', ({ side }) => {
     if (!side) return;
     state.lives[side] = Math.max(0, state.lives[side] - 1);
-    // Optional: create a small flash at the corresponding ship’s shield center
+    // Create a small flash at the corresponding ship’s shield center
     const { cx, cy } = getShieldForSide(side);
     state.explosions.push({ x: cx, y: cy, t: 0, life: 0.35 });
+
+    checkGameOverAndNavigate();
+  });
+
+  // === Game over broadcast -> both sides navigate ===
+  socket.on('gameOver', ({ winner }) => {
+    if (gameEnded) return;
+    gameEnded = true;
+
+    const url = new URL('gameover.html', location.href);
+    url.searchParams.set('roomId', roomId);
+    url.searchParams.set('winner', (winner || 'tie'));
+    url.searchParams.set('role', role);
+    url.searchParams.set('you', username);
+    location.href = url.toString();
   });
   
   socket.on('opponentCheat', ({ enabled }) => {
@@ -480,6 +528,8 @@
 
         // Sync to opponent
         socket.emit('breach', { roomId, side: breachedSide });
+
+        checkGameOverAndNavigate();
       }
     }
   }

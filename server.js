@@ -307,7 +307,7 @@ io.on('connection', (socket) => {
   // Relay bullet fire to opponent
   socket.on('fire', ({ roomId, x, y, vx, vy, ts }) => {
     if (!roomId) return;
-    // Optionally, trust socket.data.game.roomId if you prefer:
+    // Optionally, trust socket.data.game.roomId:
     // const roomId = socket.data?.game?.roomId; if (!roomId) return;
     socket.to(roomId).emit('opponentFire', { x, y, vx, vy, ts });
   });
@@ -328,6 +328,12 @@ io.on('connection', (socket) => {
   socket.on('breach', ({ roomId, side }) => {
     if (!roomId || !side) return;
     socket.to(roomId).emit('breach', { side });
+  });
+
+  // Broadcast game over to both clients in the room
+  socket.on('gameOver', ({ roomId, winner }) => {
+    if (!roomId) return;
+    io.to(roomId).emit('gameOver', { winner });
   });
 
   // Cheat toggle
