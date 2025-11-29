@@ -47,6 +47,10 @@
     // roster is an array with role info [{role,userId,username}, ...]
     const opp = roster.find(p => p.role !== role && p.userId);
     opBadge.textContent = `Opponent: ${opp ? `${opp.username} (${opp.role})` : 'waiting…'}`;
+
+    // When both players are in the room, start BGM
+    const bothPresent = roster.every(p => !!p.userId);
+    if (bothPresent) tryStartMusic();
   });
 
   // Game state
@@ -63,6 +67,33 @@
     lastSendTs: 0
   };
 
+  // === Background music ===
+  let musicStarted = false;
+  const bgm = new Audio('data/Imperial March.m4a'); // your provided m4a
+  bgm.loop = true;
+  bgm.preload = 'auto';
+  bgm.volume = 1;
+
+  function tryStartMusic() {
+    if (musicStarted) return;
+    bgm.play().then(() => {
+      musicStarted = true;
+      // Clean up any pending gesture listeners if we added them
+      window.removeEventListener('keydown', resumeFromGesture, true);
+      window.removeEventListener('mousedown', resumeFromGesture, true);
+      window.removeEventListener('touchstart', resumeFromGesture, true);
+    }).catch(() => {
+      // Autoplay blocked: start on first user gesture
+      window.addEventListener('keydown', resumeFromGesture, true);
+      window.addEventListener('mousedown', resumeFromGesture, true);
+      window.addEventListener('touchstart', resumeFromGesture, true);
+    });
+  }
+
+  function resumeFromGesture() {
+    tryStartMusic();
+  }
+
   // Projectiles
   const FIRE_COOLDOWN_MS = 180;        // fire rate limit
   const BULLET_SPEED = 1800;           // px/sec
@@ -74,9 +105,9 @@
   // Fighters and explosions ===
   state.fighters = [];   // {id, side:'left'|'right', x,y, vx, vy, r, alive:true}
   state.explosions = []; // {x,y, t:0..life, life}
-  const FIGHTER_SPEED = 520;           // px/sec base speed
-  const FIGHTER_RADIUS = 36;           // for simple circle hitbox
-  const SPAWN_INTERVAL_MS = 3000;      // how often to spawn a pair
+  const FIGHTER_SPEED = 600;           // px/sec base speed
+  const FIGHTER_RADIUS = 40;           // for simple circle hitbox
+  const SPAWN_INTERVAL_MS = 2000;      // how often to spawn a pair
   state.lastSpawnMs = 0;
 
   // === Difficulty scaling ===
@@ -89,7 +120,7 @@
   }
 
   // === Lives  ===
-  state.lives = { left: 5, right: 5 };  // both sides start at 15
+  state.lives = { left: 20, right: 20 };  // both sides start at 15
   const GAME_START_MS = performance.now();
 
 
@@ -637,8 +668,8 @@
 
         const { midY } = getSceneAnchors();
         // random vertical bands
-        const yL = midY - 260 + Math.random() * 520;
-        const yR = midY - 260 + Math.random() * 520;
+        const yL = midY - 500 + Math.random() * 1000;
+        const yR = midY - 500 + Math.random() * 1000;
 
         const idL = `L_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
         const idR = `R_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
