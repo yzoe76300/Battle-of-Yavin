@@ -312,6 +312,24 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('opponentFire', { x, y, vx, vy, ts });
   });
 
+  // Relay fighter spawns
+  socket.on('spawnFighters', ({ roomId, fighters }) => {
+    if (!roomId || !Array.isArray(fighters)) return;
+    socket.to(roomId).emit('fighterSpawn', { fighters });
+  });
+
+  // Relay fighter down
+  socket.on('fighterDown', ({ roomId, id }) => {
+    if (!roomId || !id) return;
+    socket.to(roomId).emit('fighterDown', { id });
+  });
+
+  // Relay shield breach life loss
+  socket.on('breach', ({ roomId, side }) => {
+    if (!roomId || !side) return;
+    socket.to(roomId).emit('breach', { side });
+  });
+
   // Cheat toggle
   socket.on('cheatToggle', ({ roomId, enabled }) => {
     if (!roomId) return;
