@@ -81,6 +81,10 @@
   const imgDestroyerRight = new Image();
   imgDestroyerLeft.src = 'data/destroyer_left.png';
   imgDestroyerRight.src = 'data/destroyer_right.png';
+  const imgEmpireFighter = new Image();
+  const imgRebelFighter = new Image();
+  imgEmpireFighter.src = 'data/empire_fighter.png';
+  imgRebelFighter.src = 'data/rebel_fighter.png';
 
   function resize() {
     const ratio = window.devicePixelRatio || 1;
@@ -384,11 +388,13 @@
             targetSide = 'left';
         }
 
+        const type = side === 'left' ? 'rebel' : 'empire';
         state.enemyFighters.push({
             x, y, vx,
             targetSide,
             size: 30,
-            color: side === 'left' ? '#FFD700' : '#FF4500'
+            color: side === 'left' ? '#FFD700' : '#FF4500',
+            type: type
         });
     }
 
@@ -432,18 +438,20 @@
 
     function drawEnemyFighters() {
         for (const fighter of state.enemyFighters) {
-            ctx.fillStyle = fighter.color;
-            ctx.beginPath();
-            ctx.arc(fighter.x, fighter.y, fighter.size, 0, Math.PI * 2); // 基础圆形
-            ctx.fill();
+            const img = fighter.type === 'rebel' ? imgRebelFighter : imgEmpireFighter;
 
-            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(fighter.x, fighter.y - fighter.size);
-            ctx.lineTo(fighter.x - fighter.size * 0.7, fighter.y + fighter.size * 0.5);
-            ctx.lineTo(fighter.x + fighter.size * 0.7, fighter.y + fighter.size * 0.5);
-            ctx.stroke();
+            const drawW = 50;
+            const drawH = 30;
+
+            if (img.complete) {
+                ctx.drawImage(
+                    img,
+                    fighter.x - drawW / 2,
+                    fighter.y - drawH / 2,
+                    drawW,
+                    drawH
+                );
+            }
         }
     }
 
