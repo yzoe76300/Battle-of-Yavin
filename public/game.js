@@ -6,6 +6,10 @@
   // Start with hint from query string; server will confirm/override
   let role = (params.get('role') === 'player2') ? 'player2' : 'player1';
   const username = params.get('username') || `pilot_${Math.random().toString(36).slice(2, 6)}`;
+  // define the variables for the gameOver page
+  let gameOver = false;
+  let animationId;
+  let winner = '';
 
   // Use a stable userId if have one saved by login; fallback to ephemeral
   const stored = JSON.parse(localStorage.getItem('boY_user') || '{}');
@@ -217,7 +221,18 @@
     // Optional: create a small flash at the corresponding ship’s shield center
     const { cx, cy } = getShieldForSide(side);
     state.explosions.push({ x: cx, y: cy, t: 0, life: 0.35 });
+    checkGameOver();
   });
+
+    function checkGameOver() {
+        if (state.lives.left <= 0 && state.lives.right <= 0) {
+            endGame('draw');
+        } else if (state.lives.left <= 0) {
+            endGame('player2');
+        } else if (state.lives.right <= 0) {
+            endGame('player1');
+        }
+    }
   
   socket.on('opponentCheat', ({ enabled }) => {
     state.op.cheat = !!enabled;
@@ -225,7 +240,9 @@
 
   // Return button
   returnBtn.addEventListener('click', () => {
-    location.href = 'lobby.html';
+      if (gameOver){
+          location.href = 'lobby.html';
+      }
   });
 
   // === drawMothership draws destroyer images ===
@@ -603,7 +620,18 @@
   // Game loop
   let last = performance.now();
   function tick(now) {
-    const dt = Math.min(0.033, (now - last) / 1000); // cap dt
+    if (gameOver) {
+      return;
+    }
+    if (state.lives.left <= 0 && state.lives.right <= 0) {
+      endGame('draw');
+    } else if (state.lives.left <= 0) {
+      endGame('player2');
+    } else if (state.lives.right <= 0) {
+      endGame('player1');
+    }
+
+      const dt = Math.min(0.033, (now - last) / 1000); // cap dt
     last = now;
 
     // Handle input: change angle
@@ -667,7 +695,12 @@
     draw();
     requestAnimationFrame(tick);
   }
-
+    function endGame(result) {
+        gameOver = true;
+        cancelAnimationFrame(animationId);
+        // 跳转到game_over.html并传递结果参数
+        window.location.href = `game_over.html?result=${result}`;
+    }
   function draw() {
     ctx.clearRect(0, 0, state.width, state.height);
 
