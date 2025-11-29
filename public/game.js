@@ -56,7 +56,12 @@
       angle: 0,
       cheat: false
     },
-    lastSendTs: 0
+    lastSendTs: 0,
+    myHealth: 100,
+    opHealth: 100,
+    projectiles: [],
+    enemyFighters: [],
+    explosions: []
   };
 
   // Projectiles
@@ -314,7 +319,12 @@
       const alive = (now - p.ts) < BULLET_LIFETIME;
       const onscreen = p.x > -200 && p.x < w + 200 && p.y > -200 && p.y < h + 200;
       if (!alive || !onscreen) return false;
-
+      const hitEnemy = hitsEnemy(p);
+      if (hitEnemy) {
+          createExplosion(p.x, p.y);
+          state.enemyFighters.splice(hitEnemy.index, 1);
+          return false; // remove bullet on hit
+      }
       // Collision: bullet only interacts with the opponent shield
       const targetShield = (p.side === 'player1') ? rightShield : leftShield;
 
@@ -356,6 +366,120 @@
     }
   }
 
+    function generateEnemyFighter() {
+        const side = Math.random() < 0.5 ? 'left' : 'right';
+
+        let x, y, vx, targetSide;
+        const midY = state.height * 0.5;
+
+        if (side === 'left') {
+            x = -200;
+            y = midY + (Math.random() - 0.5) * 600;
+            vx = 400;
+            targetSide = 'right';
+        } else {
+            x = state.width + 200;
+            y = midY + (Math.random() - 0.5) * 600;
+            vx = -400;
+            targetSide = 'left';
+        }
+
+        state.enemyFighters.push({
+            x, y, vx,
+            targetSide,
+            size: 30,
+            color: side === 'left' ? '#FFD700' : '#FF4500'
+        });
+    }
+
+    function stepEnemyFighters(dt) {
+        const now = performance.now() / 1000;
+
+        state.enemyFighters = state.enemyFighters.filter(fighter => {
+            fighter.x += fighter.vx * dt;
+            fighter.y += (Math.random() - 0.5) * 50 * dt;
+
+            let shield;
+            if (fighter.targetSide === 'left') {
+                shield = getShieldForSide('left');
+            } else {
+                shield = getShieldForSide('right');
+            }
+
+            if (hitsShield(fighter.x, fighter.y, shield)) {
+                const damage = 15;
+
+                if (role === 'player1') {
+                    if (fighter.targetSide === 'left') {
+                        state.myHealth -= damage;
+                    } else {
+                        state.opHealth -= damage;
+                    }
+                } else { // player2
+                    if (fighter.targetSide === 'left') {
+                        state.opHealth -= damage;
+                    } else {
+                        state.myHealth -= damage;
+                    }
+                }
+                return false;
+            }
+
+            return fighter.x > -200 && fighter.x < state.width + 200 &&
+                fighter.y > -200 && fighter.y < state.height + 200;
+        });
+    }
+
+    function drawEnemyFighters() {
+        for (const fighter of state.enemyFighters) {
+            ctx.fillStyle = fighter.color;
+            ctx.beginPath();
+            ctx.arc(fighter.x, fighter.y, fighter.size, 0, Math.PI * 2); // 基础圆形
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(fighter.x, fighter.y - fighter.size);
+            ctx.lineTo(fighter.x - fighter.size * 0.7, fighter.y + fighter.size * 0.5);
+            ctx.lineTo(fighter.x + fighter.size * 0.7, fighter.y + fighter.size * 0.5);
+            ctx.stroke();
+        }
+    }
+
+    function hitsEnemy(bullet) {
+        for (let i = 0; i < state.enemyFighters.length; i++) {
+            const fighter = state.enemyFighters[i];
+            const dx = bullet.x - fighter.x;
+            const dy = bullet.y - fighter.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // 检查是否击中小飞机（距离小于小飞机半径）
+            if (distance < fighter.size) {
+                return { index: i, fighter };
+            }
+        }
+        return null;
+    }
+
+    function createExplosion(x, y) {
+        state.explosions.push({
+            x: x,
+            y: y,
+            size: 5,
+            max_size: 20,
+            ts: performance.now() / 1000
+        });
+    }
+
+    function drawExplosions() {
+        for (const explosion of state.explosions) {
+            ctx.beginPath();
+            ctx.arc(explosion.x, explosion.y, explosion.size, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fill();
+        }
+    }
   // Game loop
   let last = performance.now();
   function tick(now) {
@@ -373,6 +497,7 @@
     const maxLim =  Math.PI * 0.39;
     state.my.angle = clamp(state.my.angle, minLim, maxLim);
 
+    stepEnemyFighters(dt);
     // Throttle network sends to ~30 Hz
     const ts = now | 0;
     if (ts - state.lastSendTs > 33) {
@@ -405,7 +530,14 @@
       ctx.fillStyle = 'rgba(255,255,255,0.15)';
       ctx.fillRect(x, y, 2, 2);
     }
+    ctx.fillStyle = 'white';
+    ctx.font = '18px Arial';
+    ctx.fillText(`Your Health: ${state.myHealth}`, 20, 30);
+    ctx.fillText(`Opponent Health: ${state.opHealth}`, 20, 60);
     ctx.restore();
+    drawEnemyFighters();
+
+    drawExplosions();
 
     const midY = state.height * 0.5;
     const leftX = state.width * 0.17;
@@ -440,4 +572,5 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) state.lastSendTs = performance.now() | 0;
   });
+  setInterval(generateEnemyFighter, 2500);
 })();
