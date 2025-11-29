@@ -88,6 +88,27 @@
     }
   }
 
+  // === Mini-shields for fighters when cheat is ON ===
+  const FIGHTER_SHIELD_RADIUS = 56; // ~1.4x fighter hit radius
+
+  // Which side currently has cheat enabled?
+  function isCheatOnSide(side) {
+    // 'left' side belongs to player1; 'right' side belongs to player2
+    if (side === 'left')  return (role === 'player1') ? state.my.cheat : state.op.cheat;
+    if (side === 'right') return (role === 'player2') ? state.my.cheat : state.op.cheat;
+    return false;
+  }
+
+  // Bullet vs fighter mini-shield (front half only, like mothership shields)
+  function hitsFighterShield(px, py, f) {
+    // Circle test
+    const dx = px - f.x, dy = py - f.y;
+    if (dx*dx + dy*dy > FIGHTER_SHIELD_RADIUS * FIGHTER_SHIELD_RADIUS) return false;
+    // Front-half check: left-side fighters fly +X, right-side fly -X
+    const front = (f.side === 'left') ? (px - f.x) > 0 : (px - f.x) < 0;
+    return front;
+  }
+
   // === Background music ===
   let musicStarted = false;
   const bgm = new Audio('data/Imperial March.m4a'); // your provided m4a
@@ -604,6 +625,29 @@
 
       // sprite
       ctx.drawImage(img, f.x - halfW, f.y - halfH, drawW, drawH);
+
+      // Visual mini-shield when cheat ON for this fighter's side
+      if (isCheatOnSide(f.side)) {
+        const dir = (f.side === 'left') ? 1 : -1;
+        const start = (dir === 1) ? -Math.PI / 2 :  Math.PI / 2;
+        const end   = (dir === 1) ?  Math.PI / 2 : -Math.PI / 2;
+
+        ctx.save();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(78,205,196,0.95)';   // same mint glow vibe
+        ctx.shadowColor = 'rgba(78,205,196,0.75)';
+        ctx.shadowBlur = 10;
+
+        // Slightly ahead of the nose for a "front" feel
+        const cx = f.x + dir * 5;
+        const cy = f.y;
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, FIGHTER_SHIELD_RADIUS, start, end, false);
+        ctx.stroke();
+
+        ctx.restore();
+      }
     }
     ctx.restore();
   }
@@ -668,7 +712,18 @@
       if (hitsShield(p.x, p.y, targetShield)) return false;
 
       // === Fighter collision (bullets only damage enemy fighters) ===
+      // === Absorb on fighter mini-shields when cheat is ON ===
       const enemySide = (p.side === 'player1') ? 'right' : 'left';
+      if (isCheatOnSide(enemySide)) {
+        for (const f of state.fighters) {
+          if (!f.alive || f.side !== enemySide) continue;
+          if (hitsFighterShield(p.x, p.y, f)) {
+            // Bullet vanishes on contact, like mothership shields
+            return false;
+          }
+        }
+      }
+
       let hitId = null;
 
       for (const f of state.fighters) {
