@@ -266,7 +266,7 @@
   imgFighterRight.src = 'data/empire_fighter.png';
 
 
-  const MAX_PIXELS = 6000000; // 6 megapixels
+  const MAX_PIXELS = 3000000; // 3 megapixels
   function resize() {
     const dpr = window.devicePixelRatio || 1;
     const want = state.width * state.height * dpr * dpr;
