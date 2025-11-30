@@ -265,15 +265,21 @@
   imgFighterLeft.src  = 'data/rebel_fighter.png';
   imgFighterRight.src = 'data/empire_fighter.png';
 
-  function resize() {
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = state.width * ratio;
-    canvas.height = state.height * ratio;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-    buildStars(); // Rebuild background layer to match new size
-    draw(); // redraw on resize
+  const MAX_PIXELS = 6000000; // 6 megapixels
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const want = state.width * state.height * dpr * dpr;
+    const scale = Math.min(1, Math.sqrt(MAX_PIXELS / want)); // auto downscale if too big
+
+    canvas.width  = Math.floor(state.width  * dpr * scale);
+    canvas.height = Math.floor(state.height * dpr * scale);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+
+    buildStars();
+    draw();
   }
+
   window.addEventListener('resize', resize, { passive: true });
   resize();
 
